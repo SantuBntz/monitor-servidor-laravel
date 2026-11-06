@@ -1,58 +1,85 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Monitor de Servidor con Laravel
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Trabajo práctico de **Programación IV** · Cohorte 2026 · UTN Facultad Regional Resistencia
 
-## About Laravel
+Aplicación en Laravel que lee datos del sistema operativo **Windows** (memoria, CPU, disco, uptime, temperatura) y los muestra en una vista web y en una API JSON.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Qué hace
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Vista web** en `/servidor`: 8 tarjetas (equipo, sistema, PHP, disco, memoria, CPU, uptime y temperatura) que se actualizan solas cada 5 segundos.
+- **API JSON** en `/api/metrics`: devuelve los mismos datos en formato JSON.
+- Ambas salidas usan el mismo service, `ServerMetrics`, que consulta a Windows mediante PowerShell (`Get-CimInstance`).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Requisitos
 
-## Learning Laravel
+- Windows (el service usa PowerShell y WMI)
+- PHP 8.2 o superior, con `shell_exec` habilitado
+- Composer
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Instalación y ejecución
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```powershell
+git clone https://github.com/SantuBntz/monitor-servidor-laravel.git
+cd monitor-servidor-laravel
+composer install
+copy .env.example .env
+php artisan key:generate
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+En el archivo `.env`, usar archivos en lugar de base de datos (el proyecto no usa base de datos):
 
-## Contributing
+```env
+SESSION_DRIVER=file
+CACHE_STORE=file
+QUEUE_CONNECTION=sync
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Iniciar el servidor:
 
-## Code of Conduct
+```powershell
+php artisan config:clear
+php artisan serve
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Abrir en el navegador:
 
-## Security Vulnerabilities
+- Vista web: http://127.0.0.1:8000/servidor
+- API: http://127.0.0.1:8000/api/metrics
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Estructura principal
 
-## License
+| Archivo | Función |
+|---|---|
+| `app/Services/ServerMetrics.php` | Lee el sistema operativo y arma los datos |
+| `app/Http/Controllers/ServerController.php` | Decide el formato de salida (vista o JSON) |
+| `routes/web.php` | Ruta `/servidor` |
+| `routes/api.php` | Ruta `/api/metrics` |
+| `resources/views/servidor.blade.php` | Vista con las tarjetas y el polling |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Los 5 pasos del trabajo
+
+### 1. Crear el proyecto
+Se creó un proyecto Laravel nuevo con Composer (`composer create-project laravel/laravel monitor-servidor`). Se configuró el `.env` con sesiones y caché en archivos, porque el proyecto no usa base de datos.
+
+### 2. Service
+`app/Services/ServerMetrics.php` lanza con `shell_exec()` un script fijo de PowerShell que ejecuta `Get-CimInstance`. Windows responde con los datos por WMI, el script los devuelve en JSON y PHP los convierte en un array con `json_decode()`. El método `snapshot()` devuelve los datos listos para usar.
+
+### 3. Vista web
+La ruta `/servidor` muestra la vista Blade `servidor.blade.php` con las 8 tarjetas. El controlador recibe el service por inyección de dependencias: Laravel lo crea y se lo pasa declarándolo como parámetro (`index(ServerMetrics $metrics)`).
+
+### 4. API JSON
+La ruta `/api/metrics` (definida en `routes/api.php`) devuelve los mismos datos en JSON. Usa el mismo service que la vista web: el controlador solo cambia el formato de la respuesta.
+
+### 5. Polling
+La vista llama con `fetch` a `/api/metrics` cada 5 segundos (`setInterval`) y actualiza el contenido de las tarjetas sin recargar la página. Si una petición falla, se conservan los últimos datos mostrados.
+
+## Notas
+
+- **Temperatura:** en Windows suele figurar como "No disponible". Requiere permisos de administrador y que la placa la informe; es un comportamiento esperado.
+- **Seguridad:** `shell_exec()` ejecuta comandos en el servidor, por eso el script de PowerShell es fijo y nunca se arma con datos del usuario.
+- **API:** expone datos de infraestructura. En producción debería protegerse con `auth:sanctum` y un límite de pedidos (`throttle`).
+- **Polling:** cada visitante genera un pedido cada 5 segundos aunque los datos no cambien. El próximo trabajo práctico lo reemplaza por WebSockets con Laravel Reverb y Echo.
+
+## Autor
+
+Santiago Benitez
